@@ -170,6 +170,31 @@ def test_time_rotation(freeze_time, tmp_path, when, hours):
     assert content == ["a\n", "b\nc\n", "d\n", "e\n"]
 
 
+def test_weekday_rotation_first_rotation_considers_weekday(freeze_time, tmp_path):
+    with freeze_time("2017-06-18 12:00:00") as frozen:  # Sunday
+        i = logger.add(
+            tmp_path / "test.log",
+            format="{message}",
+            rotation="monday at 13:00",
+        )
+
+        frozen.tick(delta=datetime.timedelta(hours=1))
+        logger.debug("Sunday")
+
+        frozen.tick(delta=datetime.timedelta(hours=24))
+        logger.debug("Monday")
+
+        logger.remove(i)
+
+    check_dir(
+        tmp_path,
+        files=[
+            ("test.2017-06-18_12-00-00_000000.log", "Sunday\n"),
+            ("test.log", "Monday\n"),
+        ],
+    )
+
+
 def test_time_rotation_dst(freeze_time, tmp_path):
     with freeze_time("2018-10-27 05:00:00", ("CET", 3600)):
         i = logger.add(tmp_path / "test_{time}.log", format="{message}", rotation="1 day")
