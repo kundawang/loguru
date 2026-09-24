@@ -122,12 +122,43 @@ def test_decorate_async_generator_then_async_throw_with_handled_error():
     asyncio.run(coro())
 
 
+def test_decorate_async_generator_then_async_throw_is_logged():
+    messages = []
+    handler_id = logger.add(
+        messages.append, format="{message}", diagnose=False, backtrace=False, colorize=False
+    )
+
+    @logger.catch(default=42)
+    async def generator():
+        yield 1
+        yield 2
+
+    async def coro():
+        gen = generator()
+        await gen.asend(None)
+        try:
+            await gen.athrow(ValueError("Bug"))
+        except StopAsyncIteration:
+            pass
+        else:
+            raise AssertionError("StopAsyncIteration not raised")
+
+    try:
+        asyncio.run(coro())
+    finally:
+        logger.remove(handler_id)
+
+    if not any("ValueError: Bug" in str(message) for message in messages):
+        raise AssertionError("Exception raised by athrow() was not logged")
+
+
 test_decorate_async_generator()
 test_decorate_async_generator_with_error()
 test_decorate_async_generator_with_error_reraised()
 test_decorate_async_generator_then_async_send()
 test_decorate_async_generator_then_async_throw()
 test_decorate_async_generator_then_async_throw_with_handled_error()
+test_decorate_async_generator_then_async_throw_is_logged()
 
 logger.add(sys.stderr, format="{message}")
 logger.info("Done")
