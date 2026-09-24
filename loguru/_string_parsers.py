@@ -295,6 +295,8 @@ def parse_time(time: str) -> datetime.time:
     if not reg.match(time):
         return None
 
+    time = re.sub(r"\s*([ap]m)$", r" \1", time, flags=re.I)
+
     formats = [
         "%H",
         "%H:%M",
