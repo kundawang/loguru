@@ -10,6 +10,8 @@ tokens = r"H{1,2}|h{1,2}|m{1,2}|s{1,2}|S+|YYYY|YY|M{1,4}|D{1,4}|Z{1,2}|zz|A|X|x|
 
 pattern = re.compile(r"(?:{0})|\[(?:{0}|!UTC|)\]".format(tokens))
 
+_epoch = datetime_(1970, 1, 1, tzinfo=timezone.utc)
+
 
 def _builtin_datetime_formatter(is_utc, format_string, dt):
     if is_utc:
@@ -36,6 +38,24 @@ def _default_datetime_formatter(dt):
         dt.microsecond // 1000,
         _format_timezone(dt, sep=":"),
     )
+
+
+def _unix_time(dt):
+    # The float returned by "dt.timestamp()" cannot represent microseconds for
+    # dates far enough from the epoch, which would break the floor semantics
+    # expected for the "X" and "x" tokens. The timedelta subtraction is exact
+    # and its normalization guarantees the proper floor of negative values.
+    if dt.tzinfo is None:
+        # A naive datetime is interpreted as local time, like "dt.timestamp()".
+        try:
+            dt = dt.astimezone()
+        except ValueError:
+            # Python 3.5 does not support "astimezone()" on naive datetimes.
+            seconds = floor(dt.timestamp())
+            return seconds, seconds * 1000000 + dt.microsecond
+    delta = dt - _epoch
+    seconds = delta.days * 86400 + delta.seconds
+    return seconds, seconds * 1000000 + delta.microseconds
 
 
 def _format_timezone(dt, *, sep):
@@ -109,8 +129,8 @@ def _compile_format(spec):
         "Z": ("%s", lambda t, dt: _format_timezone(dt, sep=":")),
         "ZZ": ("%s", lambda t, dt: _format_timezone(dt, sep="")),
         "zz": ("%s", lambda t, dt: (dt.tzinfo or timezone.utc).tzname(dt) or ""),
-        "X": ("%d", lambda t, dt: floor(dt.timestamp())),
-        "x": ("%d", lambda t, dt: floor(dt.timestamp()) * 1000000 + dt.microsecond),
+        "X": ("%d", lambda t, dt: _unix_time(dt)[0]),
+        "x": ("%d", lambda t, dt: _unix_time(dt)[1]),
     }
 
     format_string = ""
