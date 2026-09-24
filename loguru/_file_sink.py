@@ -331,9 +331,6 @@ class FileSink:
             size = string_parsers.parse_size(rotation)
             if size is not None:
                 return FileSink._make_rotation_function(size)
-            interval = string_parsers.parse_duration(rotation)
-            if interval is not None:
-                return FileSink._make_rotation_function(interval)
             frequency = string_parsers.parse_frequency(rotation)
             if frequency is not None:
                 return Rotation.RotationTime(frequency)
@@ -346,6 +343,9 @@ class FileSink:
                     time = datetime.time(0, 0, 0)
                 step_forward = partial(Rotation.forward_weekday, weekday=day)
                 return Rotation.RotationTime(step_forward, time, day)
+            interval = string_parsers.parse_duration(rotation)
+            if interval is not None:
+                return FileSink._make_rotation_function(interval)
             raise ValueError("Cannot parse rotation from: '%s'" % rotation)
         if isinstance(rotation, (numbers.Real, decimal.Decimal)):
             return partial(Rotation.rotation_size, size_limit=rotation)
