@@ -172,6 +172,9 @@ def test_formatting(writer, freeze_time, time_format, date, timezone, expected):
         ("YYYY-MM-DD HH-mm-ss zz Z ZZ", 6543, "2018-06-09 01-02-03 ABC +01:49:03 +014903"),
         ("HH-mm-ss zz Z ZZ", -12345.06702, "01-02-03 ABC -03:25:45.067020 -032545.067020"),
         ("YYYY-MM-DD HH-mm-ss zz Z ZZ", -3661, "2018-06-09 01-02-03 ABC -01:01:01 -010101"),
+        ("YYYY-MM-DD HH-mm-ss zz Z ZZ", -12345, "2018-06-09 01-02-03 ABC -03:25:45 -032545"),
+        ("YYYY-MM-DD HH-mm-ss zz Z ZZ", 5400, "2018-06-09 01-02-03 ABC +01:30 +0130"),
+        ("YYYY-MM-DD HH-mm-ss zz Z ZZ", -5400, "2018-06-09 01-02-03 ABC -01:30 -0130"),
     ],
 )
 @pytest.mark.skipif(sys.version_info < (3, 7), reason="Offset must be a whole number of minutes")
