@@ -439,6 +439,104 @@ def test_default_with_coroutine():
     assert asyncio.run(foo()) == 42
 
 
+def test_default_with_generator_throw(writer):
+    logger.add(writer)
+
+    @logger.catch(default=42)
+    def foo():
+        yield 1
+        yield 2
+
+    gen = foo()
+    assert next(gen) == 1
+
+    with pytest.raises(StopIteration) as exc_info:
+        gen.throw(ValueError("boom"))
+
+    assert exc_info.value.value == 42
+    assert writer.read().endswith("ValueError: boom\n")
+
+
+def test_default_with_generator_throw_handled_error(writer):
+    logger.add(writer)
+
+    @logger.catch(default=42)
+    def foo():
+        try:
+            yield 1
+        except ValueError:
+            raise KeyError("other") from None
+
+    gen = foo()
+    assert next(gen) == 1
+
+    with pytest.raises(StopIteration) as exc_info:
+        gen.throw(ValueError("boom"))
+
+    assert exc_info.value.value == 42
+    assert writer.read().endswith("KeyError: 'other'\n")
+
+
+def test_default_with_coroutine_throw(writer):
+    logger.add(writer)
+
+    class Awaitable:
+        def __await__(self):
+            yield
+
+    @logger.catch(default=42)
+    async def foo():
+        await Awaitable()
+        return 0
+
+    coro = foo()
+    coro.send(None)
+
+    with pytest.raises(StopIteration) as exc_info:
+        coro.throw(ValueError("boom"))
+
+    assert exc_info.value.value == 42
+    assert writer.read().endswith("ValueError: boom\n")
+
+
+def test_default_with_async_generator_throw(writer):
+    logger.add(writer)
+
+    @logger.catch(default=42)
+    async def foo():
+        yield 1
+        yield 2
+
+    async def coro():
+        gen = foo()
+        assert await gen.asend(None) == 1
+        with pytest.raises(StopAsyncIteration):
+            await gen.athrow(ValueError("boom"))
+
+    asyncio.run(coro())
+    assert writer.read().endswith("ValueError: boom\n")
+
+
+def test_default_with_async_generator_throw_handled_error(writer):
+    logger.add(writer)
+
+    @logger.catch(default=42)
+    async def foo():
+        try:
+            yield 1
+        except ValueError:
+            raise KeyError("other") from None
+
+    async def coro():
+        gen = foo()
+        assert await gen.asend(None) == 1
+        with pytest.raises(StopAsyncIteration):
+            await gen.athrow(ValueError("boom"))
+
+    asyncio.run(coro())
+    assert writer.read().endswith("KeyError: 'other'\n")
+
+
 def test_async_context_manager():
     async def coro():
         async with logger.catch():
