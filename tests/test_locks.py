@@ -132,3 +132,78 @@ def test_pickled_logger_does_not_inherit_acquired_local(capsys):
     out, err = capsys.readouterr()
     assert out == ""
     assert err == "From main\nFrom clone\n"
+
+
+def test_no_deadlock_if_complete_while_sink_write_needs_core_lock():
+    """Regression test: "complete()" must not hold the core lock while waiting for
+    handler locks, otherwise it deadlocks with a sink whose "write()" needs the core
+    lock (e.g. by calling "contextualize()").
+    """
+    sink_started = threading.Event()
+    sink_proceed = threading.Event()
+
+    def sink(message):
+        sink_started.set()
+        assert sink_proceed.wait(10)
+        with logger.contextualize(key="value"):
+            pass
+
+    logger.add(sink, colorize=False, catch=False, format="{message}")
+
+    write_thread = threading.Thread(target=lambda: logger.info("Message"), daemon=True)
+    write_thread.start()
+    assert sink_started.wait(10)
+
+    completed = threading.Event()
+
+    def complete():
+        logger.complete()
+        completed.set()
+
+    complete_thread = threading.Thread(target=complete, daemon=True)
+    complete_thread.start()
+    time.sleep(0.5)  # Give time to "complete()" to wait for the handler lock.
+    sink_proceed.set()
+
+    complete_thread.join(timeout=10)
+    write_thread.join(timeout=10)
+
+    assert completed.is_set()
+    assert not write_thread.is_alive()
+
+
+def test_no_deadlock_if_complete_and_sink_contextualize_concurrently():
+    """Regression test: "complete()" and a sink calling "contextualize()" from within
+    "write()" (executed by the writer thread when "enqueue=True") must not wait for
+    each other indefinitely.
+    """
+
+    def sink(message):
+        with logger.contextualize(key="value"):
+            pass
+
+    logger.add(sink, colorize=False, catch=False, format="{message}", enqueue=True)
+
+    stop = threading.Event()
+
+    def log_worker():
+        while not stop.is_set():
+            logger.info("Message")
+
+    def complete_worker():
+        while not stop.is_set():
+            logger.complete()
+
+    threads = [threading.Thread(target=log_worker, daemon=True) for _ in range(3)]
+    threads.append(threading.Thread(target=complete_worker, daemon=True))
+
+    for thread in threads:
+        thread.start()
+
+    time.sleep(1)
+    stop.set()
+
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)

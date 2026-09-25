@@ -70,6 +70,13 @@ def subworker_complete_inheritance():
         loop.run_until_complete(work())
 
 
+def subworker_complete_concurrently(logger_, barrier):
+    barrier.wait()
+    for i in range(3):
+        logger_.info("Child {}", i)
+        logger_.complete()
+
+
 def subworker_barrier(logger_, barrier):
     logger_.info("Child")
     barrier.wait()
@@ -392,6 +399,40 @@ def test_await_complete_spawn(capsys, spawn_context):
     out, err = capsys.readouterr()
     assert out == "Child\n"
     assert err == ""
+
+
+def test_no_deadlock_if_complete_from_multiple_processes(capsys, spawn_context):
+    # Regression test: "complete()" used to hold the core lock while waiting for the
+    # enqueued messages to be processed. If the sink needed the core lock itself (here
+    # through "contextualize()"), the writer thread and "complete()" would deadlock.
+    barrier = spawn_context.Barrier(2)
+
+    def sink(message):
+        with logger.contextualize(key="value"):
+            pass
+        sys.stderr.write(message)
+
+    logger.add(sink, context=spawn_context, format="{message}", enqueue=True, catch=False)
+
+    process = spawn_context.Process(target=subworker_complete_concurrently, args=(logger, barrier))
+    process.start()
+
+    barrier.wait()
+    for i in range(3):
+        logger.info("Main {}", i)
+        logger.complete()
+
+    process.join(timeout=30)
+    if process.is_alive():
+        process.kill()
+        pytest.fail("Deadlock detected while completing from multiple processes")
+
+    assert process.exitcode == 0
+
+    out, err = capsys.readouterr()
+    expected = ["Child %d" % i for i in range(3)] + ["Main %d" % i for i in range(3)]
+    assert out == ""
+    assert sorted(err.splitlines()) == sorted(expected)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Windows does not support forking")

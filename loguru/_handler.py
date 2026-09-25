@@ -227,7 +227,20 @@ class Handler:
             return
 
         with self._confirmation_lock:
-            self._queue.put(True)
+            # The handler lock is used to synchronize with "stop()" and make sure the
+            # confirmation message is enqueued before the queue is possibly closed and
+            # the writer thread joined. Otherwise, the "put()" could fail or the "wait()"
+            # below could block forever. This is required because "complete()" no longer
+            # holds the core lock (to avoid deadlock) while calling this method.
+            with self._lock:
+                if self._stopped:
+                    return
+                try:
+                    self._queue.put(True)
+                except (OSError, ValueError):
+                    # The queue has been closed concurrently by "stop()" in another
+                    # process, there is nothing to wait for anymore.
+                    return
             self._confirmation_event.wait()
             self._confirmation_event.clear()
 

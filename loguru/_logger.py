@@ -1171,9 +1171,16 @@ class Logger:
 
         with self._core.lock:
             handlers = self._core.handlers.copy()
-            for handler in handlers.values():
-                handler.complete_queue()
-                tasks.extend(handler.tasks_to_complete())
+
+        # The handlers must be completed without holding the core lock. Otherwise, a
+        # deadlock could occur if a sink needs to acquire the core lock while
+        # "complete()" is itself waiting for the sink to make progress (through the
+        # handler lock or the confirmation event). This can happen, for example, if a
+        # sink calls "contextualize()" (or any other method using the core lock) from
+        # within "write()".
+        for handler in handlers.values():
+            handler.complete_queue()
+            tasks.extend(handler.tasks_to_complete())
 
         class AwaitableCompleter:
             def __await__(self):
