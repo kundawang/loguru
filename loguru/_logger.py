@@ -1106,7 +1106,8 @@ class Logger:
             else:
                 handler_ids = [handler_id]
 
-            for handler_id in handler_ids:
+        for handler_id in handler_ids:
+            with self._core.lock:
                 handlers = self._core.handlers.copy()
                 handler = handlers.pop(handler_id)
 
@@ -1115,7 +1116,12 @@ class Logger:
                 self._core.min_level = min(levelnos, default=float("inf"))
                 self._core.handlers = handlers
 
-                handler.stop()
+            # The handler must be stopped without the core lock being held, because
+            # "stop()" acquires the handler lock and waits for the sink to finish.
+            # Meanwhile, a sink being written to from another thread might itself need
+            # the core lock (through "contextualize()" for example), which would
+            # otherwise result in a deadlock.
+            handler.stop()
 
     def complete(self):
         """Wait for the end of enqueued messages and asynchronous tasks scheduled by handlers.
@@ -1170,10 +1176,16 @@ class Logger:
         tasks = []
 
         with self._core.lock:
-            handlers = self._core.handlers.copy()
-            for handler in handlers.values():
-                handler.complete_queue()
-                tasks.extend(handler.tasks_to_complete())
+            handlers = list(self._core.handlers.values())
+
+        # The handlers must be completed without the core lock being held, because
+        # "complete_queue()" and "tasks_to_complete()" acquire the handler locks and wait
+        # for the sink to finish. Meanwhile, a sink being written to from another thread
+        # might itself need the core lock (through "contextualize()" for example), which
+        # would otherwise result in a deadlock.
+        for handler in handlers:
+            handler.complete_queue()
+            tasks.extend(handler.tasks_to_complete())
 
         class AwaitableCompleter:
             def __await__(self):
