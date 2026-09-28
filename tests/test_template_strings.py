@@ -1,3 +1,4 @@
+import json
 import sys
 from unittest.mock import MagicMock
 
@@ -205,3 +206,87 @@ def test_template_string_in_catch_message(writer):
 
     result = writer.read()
     assert result == "ERROR: 2**8 = 256\n"
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="Template Strings not supported")
+def test_template_string_adds_interpolations_to_extra(writer):
+    logger.add(writer, format="{message} | {extra}", colorize=False)
+
+    logger.info(Template("2**8 = ", Interpolation(2**8, "2**8")))
+
+    result = writer.read()
+    assert result == "2**8 = 256 | {'2**8': 256}\n"
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="Template Strings not supported")
+def test_template_string_extra_stores_raw_value():
+    extra = None
+
+    def sink(message):
+        nonlocal extra
+        extra = message.record["extra"]
+
+    logger.add(sink, format="{message}", colorize=False)
+
+    logger.info(Template("value = ", Interpolation(3.14159, "pi", None, ".2f")))
+
+    assert extra == {"pi": 3.14159}
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="Template Strings not supported")
+def test_template_string_extra_with_nested_template():
+    extra = None
+
+    def sink(message):
+        nonlocal extra
+        extra = message.record["extra"]
+
+    logger.add(sink, format="{message}", colorize=False)
+
+    inner = Template(Interpolation(2**8, "2**8"))
+    logger.info(Template("2**8 = ", Interpolation(inner, "inner")))
+
+    assert extra == {"2**8": 256}
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="Template Strings not supported")
+def test_template_string_extra_without_expression():
+    extra = None
+
+    def sink(message):
+        nonlocal extra
+        extra = message.record["extra"]
+
+    logger.add(sink, format="{message}", colorize=False)
+
+    logger.info(Template("2**8 = ", Interpolation(2**8)))
+
+    assert extra == {}
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="Template Strings not supported")
+def test_template_string_extra_merged_with_bound_extra():
+    extra = None
+
+    def sink(message):
+        nonlocal extra
+        extra = message.record["extra"]
+
+    logger.add(sink, format="{message}", colorize=False)
+
+    logger.bind(user="alice", ip="192.168.0.1").info(
+        Template("User ", Interpolation("alice", "user"), " logged in")
+    )
+
+    assert extra == {"user": "alice", "ip": "192.168.0.1"}
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="Template Strings not supported")
+def test_template_string_extra_serialized(writer):
+    logger.add(writer, format="{message}", serialize=True)
+
+    logger.info(Template("2**8 = ", Interpolation(2**8, "2**8")))
+
+    record = json.loads(writer.read())["record"]
+    assert record["message"] == "2**8 = 256"
+    assert record["extra"] == {"2**8": 256}

@@ -122,6 +122,8 @@ version, feature = 3.14, "t-strings"
 logger.debug(t"If you're using Python {version:f}, prefer {feature} of course!")
 ```
 
+The interpolated values are also added to the ``extra`` dict of the log record (keyed by their expression), which makes them available for structured logging, e.g. when using ``serialize=True``.
+
 ### Exceptions catching within threads or main
 
 Have you ever seen your program crashing unexpectedly without seeing anything in the log file? Did you ever notice that exceptions occurring in threads were not logged? This can be solved using the [`catch()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.catch) decorator / context manager which ensures that any error is correctly propagated to the [`logger`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger).
