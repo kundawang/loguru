@@ -2056,6 +2056,19 @@ class Logger:
 
         return "".join(item_to_string(item) for item in template)
 
+    @staticmethod
+    def _template_to_extra(template):
+        extra = {}
+        for item in template:
+            if isinstance(item, templatelib.Interpolation):
+                if isinstance(item.value, templatelib.Template):
+                    extra.update(Logger._template_to_extra(item.value))
+                else:
+                    key = item.expression.strip()
+                    if key:
+                        extra[key] = item.value
+        return extra
+
     def _log(self, level, from_decorator, options, message, args, kwargs):
         core = self._core
 
@@ -2142,6 +2155,7 @@ class Logger:
             exception = None
 
         if is_template(message):
+            extra = {**extra, **self._template_to_extra(message)}
             message = self._template_to_string(message)
 
         log_record = {
